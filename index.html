@@ -1,9 +1,16 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="es" data-lpignore="true">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Platformer Cyberpunk - VERSO GAMES</title>
     <style>
+        * {
+            box-sizing: border-box;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+        }
         body {
             background-color: #0b0c10;
             color: #fff;
@@ -14,50 +21,96 @@
             justify-content: center;
             margin: 0;
             height: 100vh;
-            user-select: none;
             overflow: hidden;
         }
         #game-container {
             position: relative;
-            box-shadow: 0 0 40px rgba(102, 252, 241, 0.25);
+            box-shadow: 0 0 30px rgba(102, 252, 241, 0.2);
             border-radius: 8px;
             overflow: hidden;
+            width: 100%;
+            max-width: 800px;
+            aspect-ratio: 5 / 3;
+            background: #121822;
         }
         canvas {
-            background-color: #121822;
             display: block;
+            width: 100%;
+            height: 100%;
         }
         .overlay {
             position: absolute;
             top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(11, 12, 16, 0.88);
+            background: rgba(11, 12, 16, 0.9);
             display: flex; flex-direction: column;
             align-items: center; justify-content: center;
-            z-index: 10;
+            z-index: 30;
         }
         h1 {
-            font-size: 42px; margin-bottom: 10px; color: #66fcf1;
-            text-shadow: 0 0 12px #66fcf1;
+            font-size: clamp(22px, 5vw, 38px); margin-bottom: 10px; color: #66fcf1;
+            text-shadow: 0 0 12px #66fcf1; text-align: center;
         }
-        p { color: #c5c6c7; margin-bottom: 25px; }
+        p { color: #c5c6c7; margin-bottom: 20px; text-align: center; }
         .btn {
             background: #45a29e; color: #0b0c10; border: none;
-            padding: 12px 30px; font-size: 18px; font-weight: bold;
-            border-radius: 4px; cursor: pointer; transition: 0.2s; margin: 5px;
+            padding: 12px 24px; font-size: 16px; font-weight: bold;
+            border-radius: 4px; cursor: pointer; margin: 5px;
         }
-        .btn:hover {
-            background: #66fcf1; box-shadow: 0 0 15px #66fcf1; transform: scale(1.05);
-        }
-        .controls { margin-top: 12px; font-size: 13px; color: #8892b0; }
         .hidden { display: none !important; }
+
+        /* Controles Móviles */
+        #controls-bar {
+            width: 100%;
+            max-width: 800px;
+            height: 90px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            background: #07080a;
+            border-top: 2px solid #1f2833;
+        }
+        .btn-group {
+            display: flex;
+            gap: 15px;
+        }
+        .ctrl-btn {
+            width: 65px;
+            height: 65px;
+            background: #1f2833;
+            border: 2px solid #66fcf1;
+            border-radius: 50%;
+            color: #66fcf1;
+            font-size: 24px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 0 8px rgba(102, 252, 241, 0.3);
+        }
+        .ctrl-btn:active, .ctrl-btn.pressed {
+            background: #66fcf1;
+            color: #0b0c10;
+            box-shadow: 0 0 15px #66fcf1;
+        }
+        #btn-shoot {
+            border-color: #ff4d4d;
+            color: #ff4d4d;
+            box-shadow: 0 0 8px rgba(255, 77, 77, 0.3);
+        }
+        #btn-shoot:active, #btn-shoot.pressed {
+            background: #ff4d4d;
+            color: #fff;
+            box-shadow: 0 0 15px #ff4d4d;
+        }
     </style>
 </head>
-<body>
+<body data-lpignore="true">
 
 <div id="game-container" data-lpignore="true">
-    <canvas id="gameCanvas" width="800" height="480" data-lpignore="true" autocomplete="off"></canvas>
+    <canvas id="gameCanvas" width="800" height="480"></canvas>
 
-    <div id="main-menu" class="overlay" data-lpignore="true">
+    <div id="main-menu" class="overlay">
         <h1>VERSO PLATFORMER</h1>
         <p>Selecciona un nivel para comenzar</p>
         <div>
@@ -67,25 +120,46 @@
         </div>
     </div>
 
-    <div id="game-over" class="overlay hidden" data-lpignore="true">
-        <h1 style="color: #ff4d4d; text-shadow: 0 0 12px #ff4d4d;">¡HAS MUERTO!</h1>
+    <div id="game-over" class="overlay hidden">
+        <h1 style="color: #ff4d4d;">¡HAS MUERTO!</h1>
         <button class="btn" onclick="window.returnToMenu()">Menú Principal</button>
     </div>
 
-    <div id="level-complete" class="overlay hidden" data-lpignore="true">
-        <h1 style="color: #4efa70; text-shadow: 0 0 12px #4efa70;">¡NIVEL COMPLETADO!</h1>
+    <div id="level-complete" class="overlay hidden">
+        <h1 style="color: #4efa70;">¡NIVEL COMPLETADO!</h1>
         <button id="btn-next" class="btn" onclick="window.nextLevel()">Siguiente Nivel</button>
     </div>
 </div>
 
-<div class="controls">
-    <b>Controles:</b> A/D o Flechas = Moverse | W, Espacio o Flecha Arriba = Saltar | J o Clic = Disparar
+<div id="controls-bar" data-lpignore="true">
+    <div class="btn-group">
+        <div class="ctrl-btn" id="btn-left">◀</div>
+        <div class="ctrl-btn" id="btn-right">▶</div>
+    </div>
+    <div class="btn-group">
+        <div class="ctrl-btn" id="btn-jump">▲</div>
+        <div class="ctrl-btn" id="btn-shoot">🔫</div>
+    </div>
 </div>
 
 <script>
-window._LP5 = window._LP5 || {};
+// Intercepta e ignora errores de inyección de LastPass (_LP / _LP18) de manera segura
+window.addEventListener('error', function(e) {
+    try {
+        var msg = (e && e.message) ? e.message : (e && e.error ? String(e.error) : '');
+        if (msg.includes('_LP') || msg.includes('LastPass') || msg.includes('LP18')) {
+            if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+            if (e.preventDefault) e.preventDefault();
+            return true;
+        }
+    } catch (err) {
+        return true;
+    }
+}, true);
 
 (function() {
+    'use strict';
+
     const canvas = document.getElementById("gameCanvas");
     const ctx = canvas.getContext("2d");
 
@@ -97,19 +171,55 @@ window._LP5 = window._LP5 || {};
     let enemiesDefeated = 0;
     let targetEnemies = 10;
 
-    const keys = {};
-    let mousePressed = false;
+    const inputState = {
+        left: false,
+        right: false,
+        jump: false,
+        shoot: false
+    };
 
-    window.addEventListener("keydown", e => {
-        if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) e.preventDefault();
-        keys[e.code] = true;
+    // Teclado
+    window.addEventListener("keydown", function(e) {
+        if (e.code === "KeyA" || e.code === "ArrowLeft") inputState.left = true;
+        if (e.code === "KeyD" || e.code === "ArrowRight") inputState.right = true;
+        if (e.code === "KeyW" || e.code === "Space" || e.code === "ArrowUp") inputState.jump = true;
+        if (e.code === "KeyJ") inputState.shoot = true;
     });
-    window.addEventListener("keyup", e => {
-        if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) e.preventDefault();
-        keys[e.code] = false;
+
+    window.addEventListener("keyup", function(e) {
+        if (e.code === "KeyA" || e.code === "ArrowLeft") inputState.left = false;
+        if (e.code === "KeyD" || e.code === "ArrowRight") inputState.right = false;
+        if (e.code === "KeyW" || e.code === "Space" || e.code === "ArrowUp") inputState.jump = false;
+        if (e.code === "KeyJ") inputState.shoot = false;
     });
-    window.addEventListener("mousedown", () => mousePressed = true);
-    window.addEventListener("mouseup", () => mousePressed = false);
+
+    // Eventos Pointer para Táctil
+    function setupPointerButton(elementId, stateKey) {
+        const btn = document.getElementById(elementId);
+        if (!btn) return;
+
+        const onPointerDown = function(e) {
+            e.preventDefault();
+            try { btn.setPointerCapture(e.pointerId); } catch(err) {}
+            inputState[stateKey] = true;
+            btn.classList.add("pressed");
+        };
+
+        const onPointerUp = function(e) {
+            e.preventDefault();
+            inputState[stateKey] = false;
+            btn.classList.remove("pressed");
+        };
+
+        btn.addEventListener("pointerdown", onPointerDown);
+        btn.addEventListener("pointerup", onPointerUp);
+        btn.addEventListener("pointercancel", onPointerUp);
+    }
+
+    setupPointerButton("btn-left", "left");
+    setupPointerButton("btn-right", "right");
+    setupPointerButton("btn-jump", "jump");
+    setupPointerButton("btn-shoot", "shoot");
 
     function checkCollide(a, b) {
         return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
@@ -136,7 +246,8 @@ window._LP5 = window._LP5 || {};
     }
 
     let particles = [];
-    function addExplosion(x, y, color, count = 10) {
+    function addExplosion(x, y, color, count) {
+        count = count || 10;
         for (let i = 0; i < count; i++) {
             let vx = (Math.random() - 0.5) * 6;
             let vy = (Math.random() - 0.5) * 6;
@@ -145,9 +256,9 @@ window._LP5 = window._LP5 || {};
     }
 
     class Block {
-        constructor(x, y, isGround = false) {
+        constructor(x, y, isGround) {
             this.x = x; this.y = y; this.w = GRID; this.h = GRID;
-            this.isGround = isGround;
+            this.isGround = isGround || false;
         }
         draw() {
             ctx.fillStyle = this.isGround ? "#1f2833" : "#3a4750";
@@ -170,8 +281,8 @@ window._LP5 = window._LP5 || {};
         update(blocks) {
             this.vy += GRAVITY;
             this.y += this.vy;
-            for (let b of blocks) {
-                if (checkCollide(this, b)) { this.y = b.y - this.h; this.vy = 0; }
+            for (let i = 0; i < blocks.length; i++) {
+                if (checkCollide(this, blocks[i])) { this.y = blocks[i].y - this.h; this.vy = 0; }
             }
             this.hoverOffset += 0.08;
         }
@@ -201,8 +312,8 @@ window._LP5 = window._LP5 || {};
         update(blocks) {
             this.x += this.speed;
             if (this.x < 0 || this.x > canvas.width) this.markedForDeletion = true;
-            for (let b of blocks) {
-                if (checkCollide(this, b)) {
+            for (let i = 0; i < blocks.length; i++) {
+                if (checkCollide(this, blocks[i])) {
                     this.markedForDeletion = true;
                     addExplosion(this.x, this.y, "#aaa", 4);
                 }
@@ -234,7 +345,8 @@ window._LP5 = window._LP5 || {};
                 this.freezeTimer--;
             } else {
                 this.x += this.vx;
-                for (let b of blocks) {
+                for (let i = 0; i < blocks.length; i++) {
+                    let b = blocks[i];
                     if (checkCollide(this, b)) {
                         if (this.vx > 0) this.x = b.x - this.w;
                         else if (this.vx < 0) this.x = b.x + b.w;
@@ -245,7 +357,8 @@ window._LP5 = window._LP5 || {};
             }
 
             this.y += this.vy;
-            for (let b of blocks) {
+            for (let i = 0; i < blocks.length; i++) {
+                let b = blocks[i];
                 if (checkCollide(this, b)) {
                     if (this.vy > 0) { this.y = b.y - this.h; this.vy = 0; }
                 }
@@ -289,8 +402,9 @@ window._LP5 = window._LP5 || {};
         }
         update(blocks, ammos, enemies, bullets) {
             let move = 0;
-            if (keys["KeyA"] || keys["ArrowLeft"]) move -= 1;
-            if (keys["KeyD"] || keys["ArrowRight"]) move += 1;
+            if (inputState.left) move -= 1;
+            if (inputState.right) move += 1;
+
             if (move !== 0) {
                 this.facing = move;
                 this.animFrame += 0.2;
@@ -301,41 +415,46 @@ window._LP5 = window._LP5 || {};
             if (this.x < 0) this.x = 0;
             if (this.x + this.w > canvas.width) this.x = canvas.width - this.w;
 
-            blocks.forEach(b => {
+            for (let i = 0; i < blocks.length; i++) {
+                let b = blocks[i];
                 if (checkCollide(this, b)) {
                     if (this.vx > 0) this.x = b.x - this.w;
                     else if (this.vx < 0) this.x = b.x + b.w;
                 }
-            });
+            }
 
             this.vy += GRAVITY;
             let onGround = false;
-            blocks.forEach(b => {
+            for (let i = 0; i < blocks.length; i++) {
+                let b = blocks[i];
                 if (this.y + this.h === b.y && this.x + this.w > b.x && this.x < b.x + b.w) onGround = true;
-            });
+            }
 
-            if (onGround && (keys["KeyW"] || keys["Space"] || keys["ArrowUp"])) this.vy = -8.5;
+            if (onGround && inputState.jump) this.vy = -8.5;
 
             this.y += this.vy;
-            blocks.forEach(b => {
+            for (let i = 0; i < blocks.length; i++) {
+                let b = blocks[i];
                 if (checkCollide(this, b)) {
                     if (this.vy > 0) { this.y = b.y - this.h; this.vy = 0; }
                     else if (this.vy < 0) { this.y = b.y + b.h; this.vy = 0; }
                 }
-            });
+            }
 
-            ammos.forEach(a => {
+            for (let i = 0; i < ammos.length; i++) {
+                let a = ammos[i];
                 if (checkCollide(this, a)) {
                     this.element = a.type;
                     a.markedForDeletion = true;
                     addExplosion(a.x, a.y, "#66fcf1", 8);
                 }
-            });
+            }
 
             if (this.invincibleTimer > 0) {
                 this.invincibleTimer--;
             } else {
-                enemies.forEach(e => {
+                for (let i = 0; i < enemies.length; i++) {
+                    let e = enemies[i];
                     if (checkCollide(this, e)) {
                         this.hp -= 20;
                         this.invincibleTimer = 40;
@@ -343,17 +462,15 @@ window._LP5 = window._LP5 || {};
                         this.vx = (this.x > e.x) ? 5 : -5;
                         addExplosion(this.x + 12, this.y + 16, "#ff4d4d", 12);
                     }
-                });
+                }
             }
 
             if (this.shootCooldown > 0) this.shootCooldown--;
-            const shooting = keys["KeyJ"] || mousePressed;
-            if (shooting && this.shootCooldown <= 0) {
+            if (inputState.shoot && this.shootCooldown <= 0) {
                 this.shootCooldown = 14;
                 const bulletX = this.facing === 1 ? this.x + this.w : this.x - 12;
                 bullets.push(new Bullet(bulletX, this.y + 10, this.facing, this.element));
                 addExplosion(bulletX, this.y + 12, "#fff", 3);
-                mousePressed = false;
             }
 
             if (this.hp <= 0) triggerGameOver();
@@ -401,7 +518,7 @@ window._LP5 = window._LP5 || {};
 
     function resetLevel() {
         blocks = []; ammos = []; enemies = []; bullets = []; particles = [];
-        
+
         for (let x = 0; x < canvas.width; x += GRID) {
             blocks.push(new Block(x, canvas.height - GRID, true));
         }
@@ -411,7 +528,11 @@ window._LP5 = window._LP5 || {};
         for (let i = 0; i < 12; i++) {
             let rx = Math.floor(Math.random() * (canvas.width / GRID - 6) + 3) * GRID;
             let ry = Math.floor(Math.random() * (canvas.height / GRID - 5) + 2) * GRID;
-            if (!blocks.some(b => b.x === rx && b.y === ry)) blocks.push(new Block(rx, ry));
+            let exists = false;
+            for (let j = 0; j < blocks.length; j++) {
+                if (blocks[j].x === rx && blocks[j].y === ry) { exists = true; break; }
+            }
+            if (!exists) blocks.push(new Block(rx, ry));
         }
 
         let enemySpeed = 1.5 + (currentLevel * 0.5);
@@ -419,7 +540,8 @@ window._LP5 = window._LP5 || {};
         for (let i = 0; i < 4; i++) spawnAmmo();
     }
 
-    function spawnEnemy(speed = 1.5 + (currentLevel * 0.5)) {
+    function spawnEnemy(speed) {
+        speed = speed || (1.5 + (currentLevel * 0.5));
         let rx = Math.floor(Math.random() * (canvas.width / GRID - 6) + 4) * GRID;
         let ry = Math.floor(Math.random() * (canvas.height / GRID - 5) + 2) * GRID;
         enemies.push(new Enemy(rx, ry, speed));
@@ -473,13 +595,13 @@ window._LP5 = window._LP5 || {};
 
         ctx.fillStyle = "#fff";
         ctx.font = "bold 11px sans-serif";
-        ctx.fillText(`HP: ${player.hp}`, 25, 31);
+        ctx.fillText("HP: " + player.hp, 25, 31);
 
         const elemNames = { 0: "Normal", 1: "Fuego (Área)", 2: "Hielo (Congelar)", 3: "Rayo (Rápido)" };
         ctx.font = "12px sans-serif";
         ctx.fillStyle = "#c5c6c7";
-        ctx.fillText(`Elemento: ${elemNames[player.element]}`, 20, 52);
-        ctx.fillText(`Nivel: ${currentLevel} | Bajas: ${enemiesDefeated}/${targetEnemies}`, 20, 67);
+        ctx.fillText("Elemento: " + elemNames[player.element], 20, 52);
+        ctx.fillText("Nivel: " + currentLevel + " | Bajas: " + enemiesDefeated + "/" + targetEnemies, 20, 67);
     }
 
     function loop() {
@@ -487,13 +609,16 @@ window._LP5 = window._LP5 || {};
 
         if (gameState === "PLAYING") {
             player.update(blocks, ammos, enemies, bullets);
-            ammos.forEach(a => a.update(blocks));
-            if (ammos.filter(a => !a.markedForDeletion).length < 3) spawnAmmo();
-            ammos = ammos.filter(a => !a.markedForDeletion);
 
-            enemies.forEach(e => e.update(blocks));
+            for (let i = 0; i < ammos.length; i++) ammos[i].update(blocks);
+            let activeAmmos = 0;
+            for (let i = 0; i < ammos.length; i++) { if (!ammos[i].markedForDeletion) activeAmmos++; }
+            if (activeAmmos < 3) spawnAmmo();
+            ammos = ammos.filter(function(a) { return !a.markedForDeletion; });
+
+            for (let i = 0; i < enemies.length; i++) enemies[i].update(blocks);
             let initialCount = enemies.length;
-            enemies = enemies.filter(e => !e.markedForDeletion);
+            enemies = enemies.filter(function(e) { return !e.markedForDeletion; });
             let defeated = initialCount - enemies.length;
 
             if (defeated > 0) {
@@ -502,14 +627,17 @@ window._LP5 = window._LP5 || {};
                 else for (let i = 0; i < defeated; i++) spawnEnemy();
             }
 
-            bullets.forEach(b => {
+            for (let i = 0; i < bullets.length; i++) {
+                let b = bullets[i];
                 b.update(blocks);
-                enemies.forEach(e => {
+                for (let j = 0; j < enemies.length; j++) {
+                    let e = enemies[j];
                     if (checkCollide(b, e)) {
                         if (b.element === 1) {
-                            enemies.forEach(near => {
+                            for (let k = 0; k < enemies.length; k++) {
+                                let near = enemies[k];
                                 if (Math.hypot(near.x - e.x, near.y - e.y) < 80) near.hp -= 15;
-                            });
+                            }
                             addExplosion(e.x, e.y, "#ff4d4d", 12);
                         } else if (b.element === 2) {
                             e.hp -= 10; e.freezeTimer = 120;
@@ -523,19 +651,19 @@ window._LP5 = window._LP5 || {};
                         }
                         b.markedForDeletion = true;
                     }
-                });
-            });
-            bullets = bullets.filter(b => !b.markedForDeletion);
+                }
+            }
+            bullets = bullets.filter(function(b) { return !b.markedForDeletion; });
 
-            particles.forEach(p => p.update());
-            particles = particles.filter(p => !p.markedForDeletion);
+            for (let i = 0; i < particles.length; i++) particles[i].update();
+            particles = particles.filter(function(p) { return !p.markedForDeletion; });
         }
 
-        blocks.forEach(b => b.draw());
-        ammos.forEach(a => a.draw());
-        enemies.forEach(e => e.draw());
-        bullets.forEach(b => b.draw());
-        particles.forEach(p => p.draw());
+        for (let i = 0; i < blocks.length; i++) blocks[i].draw();
+        for (let i = 0; i < ammos.length; i++) ammos[i].draw();
+        for (let i = 0; i < enemies.length; i++) enemies[i].draw();
+        for (let i = 0; i < bullets.length; i++) bullets[i].draw();
+        for (let i = 0; i < particles.length; i++) particles[i].draw();
         if (player) player.draw();
 
         if (gameState === "PLAYING") drawUI();
