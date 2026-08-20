@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Platformer Cyberpunk - VERSO GAMES</title>
+    <style>
+        body {
+            background-color: #0b0c10;
+            color: #fff;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            margin: 0;
+            height: 100vh;
+            user-select: none;
+            overflow: hidden;
+        }
+        #game-container {
+            position: relative;
+            box-shadow: 0 0 40px rgba(102, 252, 241, 0.25);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        canvas {
+            background-color: #121822;
+            display: block;
+        }
+        .overlay {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(11, 12, 16, 0.88);
+            display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            z-index: 10;
+        }
+        h1 {
+            font-size: 42px; margin-bottom: 10px; color: #66fcf1;
+            text-shadow: 0 0 12px #66fcf1;
+        }
+        p { color: #c5c6c7; margin-bottom: 25px; }
+        .btn {
+            background: #45a29e; color: #0b0c10; border: none;
+            padding: 12px 30px; font-size: 18px; font-weight: bold;
+            border-radius: 4px; cursor: pointer; transition: 0.2s; margin: 5px;
+        }
+        .btn:hover {
+            background: #66fcf1; box-shadow: 0 0 15px #66fcf1; transform: scale(1.05);
+        }
+        .controls { margin-top: 12px; font-size: 13px; color: #8892b0; }
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+
+<div id="game-container" data-lpignore="true">
+    <canvas id="gameCanvas" width="800" height="480" data-lpignore="true" autocomplete="off"></canvas>
+
+    <div id="main-menu" class="overlay" data-lpignore="true">
+        <h1>VERSO PLATFORMER</h1>
+        <p>Selecciona un nivel para comenzar</p>
+        <div>
+            <button class="btn" onclick="window.startGame(1)">Nivel 1</button>
+            <button class="btn" onclick="window.startGame(2)">Nivel 2</button>
+            <button class="btn" onclick="window.startGame(3)">Nivel 3</button>
+        </div>
+    </div>
+
+    <div id="game-over" class="overlay hidden" data-lpignore="true">
+        <h1 style="color: #ff4d4d; text-shadow: 0 0 12px #ff4d4d;">¡HAS MUERTO!</h1>
+        <button class="btn" onclick="window.returnToMenu()">Menú Principal</button>
+    </div>
+
+    <div id="level-complete" class="overlay hidden" data-lpignore="true">
+        <h1 style="color: #4efa70; text-shadow: 0 0 12px #4efa70;">¡NIVEL COMPLETADO!</h1>
+        <button id="btn-next" class="btn" onclick="window.nextLevel()">Siguiente Nivel</button>
+    </div>
+</div>
+
+<div class="controls">
+    <b>Controles:</b> A/D o Flechas = Moverse | W, Espacio o Flecha Arriba = Saltar | J o Clic = Disparar
+</div>
+
+<script>
+window._LP5 = window._LP5 || {};
+
+(function() {
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+
+    const GRID = 32;
+    const GRAVITY = 0.4;
+
+    let gameState = "MENU";
+    let currentLevel = 1;
+    let enemiesDefeated = 0;
+    let targetEnemies = 10;
+
+    const keys = {};
+    let mousePressed = false;
+
+    window.addEventListener("keydown", e => {
+        if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) e.preventDefault();
+        keys[e.code] = true;
+    });
+    window.addEventListener("keyup", e => {
+        if (["Space", "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.code)) e.preventDefault();
+        keys[e.code] = false;
+    });
+    window.addEventListener("mousedown", () => mousePressed = true);
+    window.addEventListener("mouseup", () => mousePressed = false);
+
+    function checkCollide(a, b) {
+        return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+    }
+
+    class Particle {
+        constructor(x, y, color, speedX, speedY, size, life) {
+            this.x = x; this.y = y; this.color = color;
+            this.vx = speedX; this.vy = speedY;
+            this.size = size; this.life = life; this.maxLife = life;
+            this.markedForDeletion = false;
+        }
+        update() {
+            this.x += this.vx; this.y += this.vy;
+            this.life--;
+            if (this.life <= 0) this.markedForDeletion = true;
+        }
+        draw() {
+            ctx.fillStyle = this.color;
+            ctx.globalAlpha = this.life / this.maxLife;
+            ctx.fillRect(this.x, this.y, this.size, this.size);
+            ctx.globalAlpha = 1.0;
+        }
+    }
+
+    let particles = [];
+    function addExplosion(x, y, color, count = 10) {
+        for (let i = 0; i < count; i++) {
+            let vx = (Math.random() - 0.5) * 6;
+            let vy = (Math.random() - 0.5) * 6;
+            particles.push(new Particle(x, y, color, vx, vy, Math.random() * 4 + 2, 20));
+        }
+    }
+
+    class Block {
+        constructor(x, y, isGround = false) {
+            this.x = x; this.y = y; this.w = GRID; this.h = GRID;
+            this.isGround = isGround;
+        }
+        draw() {
+            ctx.fillStyle = this.isGround ? "#1f2833" : "#3a4750";
+            ctx.fillRect(this.x, this.y, this.w, this.h);
+            ctx.fillStyle = this.isGround ? "#11151c" : "#2a323d";
+            ctx.fillRect(this.x, this.y + this.h - 4, this.w, 4);
+            ctx.fillRect(this.x + this.w - 4, this.y, 4, this.h);
+            ctx.fillStyle = "#45a29e";
+            ctx.fillRect(this.x + 2, this.y + 2, 4, 4);
+        }
+    }
+
+    class Ammo {
+        constructor(x, y) {
+            this.x = x; this.y = y; this.w = 20; this.h = 20; this.vy = 0;
+            this.type = Math.floor(Math.random() * 3) + 1;
+            this.markedForDeletion = false;
+            this.hoverOffset = Math.random() * Math.PI * 2;
+        }
+        update(blocks) {
+            this.vy += GRAVITY;
+            this.y += this.vy;
+            for (let b of blocks) {
+                if (checkCollide(this, b)) { this.y = b.y - this.h; this.vy = 0; }
+            }
+            this.hoverOffset += 0.08;
+        }
+        draw() {
+            const colors = { 1: "#ff4d4d", 2: "#00e5ff", 3: "#ffea00" };
+            const mainColor = colors[this.type];
+            let floatY = this.y + Math.sin(this.hoverOffset) * 3;
+
+            ctx.shadowColor = mainColor;
+            ctx.shadowBlur = 10;
+            ctx.fillStyle = mainColor;
+            ctx.fillRect(this.x, floatY, this.w, this.h);
+            ctx.shadowBlur = 0;
+
+            ctx.strokeStyle = "#fff";
+            ctx.strokeRect(this.x + 3, floatY + 3, this.w - 6, this.h - 6);
+        }
+    }
+
+    class Bullet {
+        constructor(x, y, dir, element) {
+            this.x = x; this.y = y; this.w = 12; this.h = 6;
+            this.element = element;
+            this.speed = (element === 3 ? 18 : 11) * dir;
+            this.markedForDeletion = false;
+        }
+        update(blocks) {
+            this.x += this.speed;
+            if (this.x < 0 || this.x > canvas.width) this.markedForDeletion = true;
+            for (let b of blocks) {
+                if (checkCollide(this, b)) {
+                    this.markedForDeletion = true;
+                    addExplosion(this.x, this.y, "#aaa", 4);
+                }
+            }
+        }
+        draw() {
+            const colors = { 0: "#ffffff", 1: "#ff4d4d", 2: "#00e5ff", 3: "#ffea00" };
+            ctx.fillStyle = colors[this.element];
+            ctx.shadowColor = colors[this.element];
+            ctx.shadowBlur = 12;
+            ctx.fillRect(this.x, this.y, this.w, this.h);
+            ctx.shadowBlur = 0;
+        }
+    }
+
+    class Enemy {
+        constructor(x, y, speed) {
+            this.x = x; this.y = y; this.w = 24; this.h = 32;
+            this.vx = speed; this.vy = 0; this.hp = 30;
+            this.freezeTimer = 0;
+            this.markedForDeletion = false;
+            this.animFrame = 0;
+        }
+        update(blocks) {
+            this.vy += GRAVITY;
+            this.animFrame += 0.15;
+
+            if (this.freezeTimer > 0) {
+                this.freezeTimer--;
+            } else {
+                this.x += this.vx;
+                for (let b of blocks) {
+                    if (checkCollide(this, b)) {
+                        if (this.vx > 0) this.x = b.x - this.w;
+                        else if (this.vx < 0) this.x = b.x + b.w;
+                        this.vx *= -1;
+                    }
+                }
+                if (this.x <= 0 || this.x + this.w >= canvas.width) this.vx *= -1;
+            }
+
+            this.y += this.vy;
+            for (let b of blocks) {
+                if (checkCollide(this, b)) {
+                    if (this.vy > 0) { this.y = b.y - this.h; this.vy = 0; }
+                }
+            }
+
+            if (this.hp <= 0) {
+                this.markedForDeletion = true;
+                addExplosion(this.x + 12, this.y + 16, "#e63946", 15);
+            }
+        }
+        draw() {
+            let isFrozen = this.freezeTimer > 0;
+            let baseColor = isFrozen ? "#00e5ff" : "#d62828";
+            let eyeColor = isFrozen ? "#ffffff" : "#ffea00";
+
+            ctx.fillStyle = baseColor;
+            ctx.fillRect(this.x + 2, this.y + 6, 20, 26);
+
+            ctx.fillStyle = "#2b2d42";
+            ctx.fillRect(this.x, this.y, 24, 12);
+
+            ctx.fillStyle = eyeColor;
+            let eyeOffset = this.vx > 0 ? 12 : 2;
+            ctx.fillRect(this.x + eyeOffset, this.y + 3, 8, 4);
+
+            ctx.fillStyle = "#1d3557";
+            let legOffset = Math.sin(this.animFrame) * 3;
+            ctx.fillRect(this.x + 2, this.y + 28 + (isFrozen ? 0 : legOffset), 8, 4);
+            ctx.fillRect(this.x + 14, this.y + 28 - (isFrozen ? 0 : legOffset), 8, 4);
+        }
+    }
+
+    class Player {
+        constructor(x, y) {
+            this.x = x; this.y = y; this.w = 24; this.h = 32;
+            this.vx = 0; this.vy = 0; this.speed = 4;
+            this.facing = 1; this.element = 0;
+            this.hp = 100; this.hpMax = 100;
+            this.invincibleTimer = 0; this.shootCooldown = 0;
+            this.animFrame = 0;
+        }
+        update(blocks, ammos, enemies, bullets) {
+            let move = 0;
+            if (keys["KeyA"] || keys["ArrowLeft"]) move -= 1;
+            if (keys["KeyD"] || keys["ArrowRight"]) move += 1;
+            if (move !== 0) {
+                this.facing = move;
+                this.animFrame += 0.2;
+            }
+
+            this.vx = move * this.speed;
+            this.x += this.vx;
+            if (this.x < 0) this.x = 0;
+            if (this.x + this.w > canvas.width) this.x = canvas.width - this.w;
+
+            blocks.forEach(b => {
+                if (checkCollide(this, b)) {
+                    if (this.vx > 0) this.x = b.x - this.w;
+                    else if (this.vx < 0) this.x = b.x + b.w;
+                }
+            });
+
+            this.vy += GRAVITY;
+            let onGround = false;
+            blocks.forEach(b => {
+                if (this.y + this.h === b.y && this.x + this.w > b.x && this.x < b.x + b.w) onGround = true;
+            });
+
+            if (onGround && (keys["KeyW"] || keys["Space"] || keys["ArrowUp"])) this.vy = -8.5;
+
+            this.y += this.vy;
+            blocks.forEach(b => {
+                if (checkCollide(this, b)) {
+                    if (this.vy > 0) { this.y = b.y - this.h; this.vy = 0; }
+                    else if (this.vy < 0) { this.y = b.y + b.h; this.vy = 0; }
+                }
+            });
+
+            ammos.forEach(a => {
+                if (checkCollide(this, a)) {
+                    this.element = a.type;
+                    a.markedForDeletion = true;
+                    addExplosion(a.x, a.y, "#66fcf1", 8);
+                }
+            });
+
+            if (this.invincibleTimer > 0) {
+                this.invincibleTimer--;
+            } else {
+                enemies.forEach(e => {
+                    if (checkCollide(this, e)) {
+                        this.hp -= 20;
+                        this.invincibleTimer = 40;
+                        this.vy = -4;
+                        this.vx = (this.x > e.x) ? 5 : -5;
+                        addExplosion(this.x + 12, this.y + 16, "#ff4d4d", 12);
+                    }
+                });
+            }
+
+            if (this.shootCooldown > 0) this.shootCooldown--;
+            const shooting = keys["KeyJ"] || mousePressed;
+            if (shooting && this.shootCooldown <= 0) {
+                this.shootCooldown = 14;
+                const bulletX = this.facing === 1 ? this.x + this.w : this.x - 12;
+                bullets.push(new Bullet(bulletX, this.y + 10, this.facing, this.element));
+                addExplosion(bulletX, this.y + 12, "#fff", 3);
+                mousePressed = false;
+            }
+
+            if (this.hp <= 0) triggerGameOver();
+        }
+        draw() {
+            if (this.invincibleTimer % 4 < 2) {
+                const colors = { 0: "#66fcf1", 1: "#ff4d4d", 2: "#00e5ff", 3: "#ffea00" };
+                let glowColor = colors[this.element];
+
+                ctx.fillStyle = "#1b263b";
+                ctx.fillRect(this.x + 4, this.y + 10, 16, 18);
+
+                ctx.fillStyle = "#415a77";
+                ctx.fillRect(this.x + 2, this.y + 2, 20, 10);
+
+                ctx.fillStyle = glowColor;
+                ctx.shadowColor = glowColor;
+                ctx.shadowBlur = 8;
+                let visorX = this.facing === 1 ? this.x + 10 : this.x + 2;
+                ctx.fillRect(visorX, this.y + 4, 12, 5);
+                ctx.shadowBlur = 0;
+
+                ctx.fillStyle = "#0d1b2a";
+                let legOffset = Math.sin(this.animFrame) * 4;
+                ctx.fillRect(this.x + 4, this.y + 28, 6, 4 + (this.vx !== 0 ? legOffset : 0));
+                ctx.fillRect(this.x + 14, this.y + 28, 6, 4 - (this.vx !== 0 ? legOffset : 0));
+            }
+        }
+    }
+
+    let blocks = [], ammos = [], enemies = [], bullets = [], player;
+
+    window.startGame = function(level) {
+        currentLevel = level;
+        enemiesDefeated = 0;
+        targetEnemies = level * 5;
+        gameState = "PLAYING";
+
+        document.getElementById("main-menu").classList.add("hidden");
+        document.getElementById("game-over").classList.add("hidden");
+        document.getElementById("level-complete").classList.add("hidden");
+
+        resetLevel();
+    };
+
+    function resetLevel() {
+        blocks = []; ammos = []; enemies = []; bullets = []; particles = [];
+        
+        for (let x = 0; x < canvas.width; x += GRID) {
+            blocks.push(new Block(x, canvas.height - GRID, true));
+        }
+
+        player = new Player(GRID * 2, canvas.height - GRID * 3);
+
+        for (let i = 0; i < 12; i++) {
+            let rx = Math.floor(Math.random() * (canvas.width / GRID - 6) + 3) * GRID;
+            let ry = Math.floor(Math.random() * (canvas.height / GRID - 5) + 2) * GRID;
+            if (!blocks.some(b => b.x === rx && b.y === ry)) blocks.push(new Block(rx, ry));
+        }
+
+        let enemySpeed = 1.5 + (currentLevel * 0.5);
+        for (let i = 0; i < 3 + currentLevel; i++) spawnEnemy(enemySpeed);
+        for (let i = 0; i < 4; i++) spawnAmmo();
+    }
+
+    function spawnEnemy(speed = 1.5 + (currentLevel * 0.5)) {
+        let rx = Math.floor(Math.random() * (canvas.width / GRID - 6) + 4) * GRID;
+        let ry = Math.floor(Math.random() * (canvas.height / GRID - 5) + 2) * GRID;
+        enemies.push(new Enemy(rx, ry, speed));
+    }
+
+    function spawnAmmo() {
+        let rx = Math.floor(Math.random() * (canvas.width / GRID - 4) + 2) * GRID;
+        let ry = Math.floor(Math.random() * (canvas.height / GRID - 5) + 2) * GRID;
+        ammos.push(new Ammo(rx, ry));
+    }
+
+    function triggerGameOver() {
+        gameState = "GAMEOVER";
+        document.getElementById("game-over").classList.remove("hidden");
+    }
+
+    function triggerLevelComplete() {
+        gameState = "WIN";
+        const btnNext = document.getElementById("btn-next");
+        if (currentLevel >= 3) {
+            btnNext.innerText = "¡Juego Completado! Menú";
+            btnNext.onclick = window.returnToMenu;
+        } else {
+            btnNext.innerText = "Siguiente Nivel";
+            btnNext.onclick = window.nextLevel;
+        }
+        document.getElementById("level-complete").classList.remove("hidden");
+    }
+
+    window.nextLevel = function() { window.startGame(currentLevel + 1); };
+
+    window.returnToMenu = function() {
+        gameState = "MENU";
+        document.getElementById("main-menu").classList.remove("hidden");
+        document.getElementById("game-over").classList.add("hidden");
+        document.getElementById("level-complete").classList.add("hidden");
+    };
+
+    function drawUI() {
+        ctx.fillStyle = "rgba(11, 12, 16, 0.85)";
+        ctx.fillRect(10, 10, 250, 65);
+        ctx.strokeStyle = "#66fcf1";
+        ctx.strokeRect(10, 10, 250, 65);
+
+        ctx.fillStyle = "#1f2833";
+        ctx.fillRect(20, 20, 150, 14);
+        let hpPercent = Math.max(0, player.hp / player.hpMax);
+        let hpColor = hpPercent > 0.5 ? "#66fcf1" : hpPercent > 0.25 ? "#ffea00" : "#ff4d4d";
+        ctx.fillStyle = hpColor;
+        ctx.fillRect(20, 20, 150 * hpPercent, 14);
+
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 11px sans-serif";
+        ctx.fillText(`HP: ${player.hp}`, 25, 31);
+
+        const elemNames = { 0: "Normal", 1: "Fuego (Área)", 2: "Hielo (Congelar)", 3: "Rayo (Rápido)" };
+        ctx.font = "12px sans-serif";
+        ctx.fillStyle = "#c5c6c7";
+        ctx.fillText(`Elemento: ${elemNames[player.element]}`, 20, 52);
+        ctx.fillText(`Nivel: ${currentLevel} | Bajas: ${enemiesDefeated}/${targetEnemies}`, 20, 67);
+    }
+
+    function loop() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (gameState === "PLAYING") {
+            player.update(blocks, ammos, enemies, bullets);
+            ammos.forEach(a => a.update(blocks));
+            if (ammos.filter(a => !a.markedForDeletion).length < 3) spawnAmmo();
+            ammos = ammos.filter(a => !a.markedForDeletion);
+
+            enemies.forEach(e => e.update(blocks));
+            let initialCount = enemies.length;
+            enemies = enemies.filter(e => !e.markedForDeletion);
+            let defeated = initialCount - enemies.length;
+
+            if (defeated > 0) {
+                enemiesDefeated += defeated;
+                if (enemiesDefeated >= targetEnemies) triggerLevelComplete();
+                else for (let i = 0; i < defeated; i++) spawnEnemy();
+            }
+
+            bullets.forEach(b => {
+                b.update(blocks);
+                enemies.forEach(e => {
+                    if (checkCollide(b, e)) {
+                        if (b.element === 1) {
+                            enemies.forEach(near => {
+                                if (Math.hypot(near.x - e.x, near.y - e.y) < 80) near.hp -= 15;
+                            });
+                            addExplosion(e.x, e.y, "#ff4d4d", 12);
+                        } else if (b.element === 2) {
+                            e.hp -= 10; e.freezeTimer = 120;
+                            addExplosion(e.x, e.y, "#00e5ff", 8);
+                        } else if (b.element === 3) {
+                            e.hp -= 30;
+                            addExplosion(e.x, e.y, "#ffea00", 10);
+                        } else {
+                            e.hp -= 10;
+                            addExplosion(e.x, e.y, "#fff", 5);
+                        }
+                        b.markedForDeletion = true;
+                    }
+                });
+            });
+            bullets = bullets.filter(b => !b.markedForDeletion);
+
+            particles.forEach(p => p.update());
+            particles = particles.filter(p => !p.markedForDeletion);
+        }
+
+        blocks.forEach(b => b.draw());
+        ammos.forEach(a => a.draw());
+        enemies.forEach(e => e.draw());
+        bullets.forEach(b => b.draw());
+        particles.forEach(p => p.draw());
+        if (player) player.draw();
+
+        if (gameState === "PLAYING") drawUI();
+
+        requestAnimationFrame(loop);
+    }
+
+    loop();
+})();
+</script>
+</body>
+</html>
